@@ -1,0 +1,368 @@
+/* ---------------------------------------------------------------------------
+   Sistema       : INVENTARIO DE RECURSOS HUMANOS
+   Modulo        : E-MAIL
+   Programa      : mailretardo.p    
+   Descripcion   : Envio de e-mails a empleados con retardo
+
+  --------------------------------------------------------------------------- */
+
+/*-- VARIABLES LOCALES --*/
+DEF VAR wk_logo       AS CHAR FORMAT "x(80)".
+DEF VAR bw_hr-checa   AS INT.
+DEF VAR bw_hr-ent     AS INT.
+DEF VAR bw_mins       AS INT.
+DEF VAR bw_link       AS CHAR FORMAT "x(135)".
+DEF VAR bw_para       AS CHAR FORMAT "x(60)".
+DEF VAR bw_nombre     AS CHAR FORMAT "x(50)".
+DEF VAR bw_de         AS CHAR FORMAT "x(50)".
+DEF VAR bw_tema       AS CHAR FORMAT "x(30)".
+DEF VAR bw_fec-cumple AS INT.
+DEF VAR bw_fecha      AS date.
+DEF VAR bw_mail       AS CHAR VIEW-AS EDITOR SIZE 70 BY 5.
+DEF VAR bw_meses      AS CHAR EXTENT 12.
+DEF VAR bw_sr         AS CHAR FORMAT "x(4)".
+DEF VAR bw_jrh        AS CHAR FORMAT "x(30)".
+DEF VAR bw_envio      AS LOGICAL INITIAL FALSE.
+DEF VAR bw_anios      AS INT.
+DEF VAR bw_emp        AS INT.
+DEF VAR sw-mail       AS LOGICAL INITIAL TRUE.
+DEF VAR bw_nota       AS CHAR FORMAT "x(70)".
+DEF VAR bw_bcc        AS CHAR FORMAT "x(50)".
+DEF VAR bw_cc         AS CHAR FORMAT "x(50)".
+DEF VAR bw_tot_min_tar AS INT.
+DEF VAR bw_suma       AS INT.
+DEF VAR bw_hora_sal   AS INT.
+DEF VAR v-pagina AS CHAR FORMAT "x(64)".
+DEF VAR Fondo AS CHAR FORMAT "X(93)".
+
+/* Variables de calculo de semana */
+
+def var wk_tipo-horario   as char.
+def var bw_fecha_ini      as char.
+def var bw_fecha_ini_anio as date.
+
+def var bw_dia_ini_anio   as int.
+def var bw_semana         as int.
+def var wk_calculo_sem    as dec.
+
+def var wk_calculo_sem1    as dec.
+def var wk_calculo_sem2    as dec.
+
+
+Define Variable MailSys As Character.
+Define Variable Mailret As Character.
+Assign MailSys = '/x11/broker/irh/correos/RepAsisSys.txt'.
+
+DEF BUFFER b-emploc FOR Emp-localizacion. /*-->Buffer de emp-localizacion*/
+
+
+/*-- ASIGNA MESES EN VARIABLE EXTENT  --*/
+ASSIGN bw_meses[1]  = "Enero"
+       bw_meses[2]  = "Febrero"
+       bw_meses[3]  = "Marzo"
+       bw_meses[4]  = "Abril"
+       bw_meses[5]  = "Mayo"
+       bw_meses[6]  = "Junio"
+       bw_meses[7]  = "Julio"
+       bw_meses[8]  = "Agosto"
+       bw_meses[9]  = "Septiembre"
+       bw_meses[10] = "Octubre"
+       bw_meses[11] = "Noviembre"
+       bw_meses[12] = "Diciembre"
+       v-pagina  = "http://172.25.158.83/cgi-bin/irhpalmex.sh/retardo.htm"
+       Fondo     = 'background=' .
+                   
+ASSIGN bw_de = "Depto. Recursos Humanos". /*--> FROM:*/
+
+/*-- FORMATO DE CORREO  --*/                 
+FORM 
+    "From: adminrh@palmex.com" Skip
+   "To:"    bw_para                     AT 4  FORMAT "x(60)" Skip
+   "Bcc: jshirma@palmex.com"  Skip
+   "Subject:"                  AT 1
+    bw_tema                    AT 10 FORMAT "x(50)" Skip
+   "Mime-Version: 1.0"         Skip
+   "Content-Type: text/html"   SKIP(1)
+  '<html><head><title>Reporte de Asistencia</title>' SKIP
+  '<style>' SKIP
+  '.title ~{font-family:Arial;font-size:10pt;text-align:center;'
+  '         background-color:#008;color:#631501;~}'
+  '.brw   ~{font-family:Arial;font-size:8pt;text-align:left;~}'
+  '.brw2  ~{font-family:Arial;font-size:8pt;text-align:center;~}'
+  'select ~{font-size:6pt;font-family:Arial;~}'
+  '</style>'
+  '</head>' SKIP
+  '<body ' Fondo '>'
+  '<td align=center>' Skip
+  '<img border="0" src='  wk_logo '></td>' Skip
+  '<p align=right><font face=Arial size="3" color=#631501>'
+  'Santa Catarina N.L.' bw_fecha  '</font></p>'
+  '<p align=leftt><font face=Arial size="3" color=#631501>'
+    bw_de  '</font></p>'
+
+ WITH FRAME f_mail NO-LABELS NO-BOX WIDTH 120 PAGE-TOP NO-ATTR-SPACE DOWN.
+              
+/* BORRA ARCHIVOS */
+
+OS-COMMAND Silent rm /x11/broker/irh/correos/*.txt.
+
+define stream Salida1.
+
+OutPut stream Salida1 To Value(MailSys).
+ Put Stream Salida1
+   "From: adminrh@palmex.com" Skip
+   "To: argonzalez@palmex.com;sperez@palmex.com" Skip
+/*   "CC: " Skip*/
+   "Bcc: jshirma@palmex.com;soportedesarrollo@palmex.com" Skip
+   "Subject: Resumen de personas que llegaron tarde el dia de hoy y aun no capturan su motivo de retardo" Skip
+   "Mime-Version: 1.0" Skip
+   "Content-Type: text" SKIP(1).
+              
+ /*--- Proceso de Envio de Mails ---*/
+DEF BUFFER wk_reloj-movimiento FOR reloj-movimiento.
+
+FOR EACH Reloj-movimiento WHERE Reloj-movimiento.cve-movimiento   = 1 AND
+                                Reloj-movimiento.fecha-movimiento = today AND
+                                reloj-movimientos.usuario3        = "B1E1F"  NO-LOCK,
+    FIRST Empleado        WHERE Empleado.num-empleado             = Reloj-movimiento.num-empleado AND
+                                Empleado.estado-actual            = 1 NO-LOCK:
+ 
+	/*IF empleado.num-empleado <> 3894 and empleado.num-empleado <> 4275 and empleado.num-empleado <> 249 and empleado.num-empleado <> 3833 and empleado.num-empleado <> 592 THEN
+		NEXT.*/
+
+	
+    /* filtra a quienes no se les controla el horario */
+    IF ctr-asis = "n" THEN
+       NEXT.
+
+    IF empleado.cve-inst = "1" THEN
+       ASSIGN wk_logo = "http://172.25.158.83/images/palmexindex.jpg".
+
+    IF empleado.cve-inst = "sasj" THEN
+       ASSIGN wk_logo = "http://www.megaalimentos.com/portal/imagenes/logosasj.png".
+
+
+    FIND LAST Tipo-horario    WHERE Tipo-horario.tipo             = Empleado.tipo-horario AND
+                                    Tipo-horario.fec-ini         <= today  NO-LOCK NO-ERROR.
+
+    IF NOT AVAILABLE tipo-horario THEN
+       NEXT.
+
+
+      /* si el empleado tiene mas horarios */
+      IF empleado.tipo-horario2 <> "" OR empleado.tipo-horario3 <> "" THEN
+      DO:
+       /* Caluclo de Semana */
+          assign  bw_fecha_ini         = "01/01/" + STRING(year(today),"9999")
+                  bw_fecha_ini_anio    = date(bw_fecha_ini)
+                  bw_dia_ini_anio      = weekday(bw_fecha_ini_anio).
+
+
+          ASSIGN wk_calculo_sem  =  today - bw_fecha_ini_anio + bw_dia_ini_anio - 1
+                 wk_calculo_sem1 =  (wk_calculo_sem / 7) + .5
+                 wk_calculo_sem2 =  round(wk_calculo_sem1,0).
+
+
+          find seltipo-horario where selTipo-horario.num-empleado = Empleado.num-empleado  AND
+                                     selTipo-horario.anio-sem     = year(today)         and
+                                     seltipo-horario.num-sem      = int(wk_calculo_sem2) no-lock no-error.
+
+
+          IF available seltipo-horario THEN
+          DO:
+              IF seltipo-horario.tipo = "1" THEN
+                 assign wk_tipo-horario = empleado.tipo-horario.
+              IF seltipo-horario.tipo = "2" THEN
+                 assign wk_tipo-horario = empleado.tipo-horario2.
+              IF seltipo-horario.tipo = "3" THEN
+                 assign wk_tipo-horario = empleado.tipo-horario3.
+
+              FIND LAST Tipo-horario WHERE Tipo-horario.tipo    = wk_tipo-horario    AND
+                                           Tipo-horario.fec-ini <= today  NO-LOCK NO-ERROR.
+              IF NOT AVAILABLE tipo-horario THEN
+                 NEXT.
+          END.
+      END.
+
+
+
+  FIND FIRST wk_reloj-movimiento WHERE wk_Reloj-movimiento.fecha-movimiento  = today and
+                                       wk_reloj-movimiento.usuario3         = "B1E1F" AND
+                                       wk_reloj-movimiento.num-empleado      = reloj-movimiento.num-empleado NO-LOCK NO-ERROR.
+
+  IF RECID(wk_reloj-movimiento) <>  RECID(reloj-movimiento) THEN
+     NEXT.
+    
+
+
+  FIND FIRST Motivo-retardo WHERE Motivo-retardo.num-empleado  = Empleado.num-empleado AND
+                                  Motivo-retardo.fecha-retardo = Reloj-mov.fecha-mov   NO-LOCK NO-ERROR.
+  IF AVAILABLE Motivo-retardo THEN 
+     NEXT.
+    
+  
+
+
+  ASSIGN bw_hr-checa = TRUNCATE(Reloj-movimiento.hora-movimiento / 60,0)
+         bw_hr-ent   = TRUNCATE((Tipo-hor.hr-ent + Tipo-hor.tolerancia) / 60,0)
+         bw_mins     = 0.
+    
+
+
+  IF bw_hr-checa    <= bw_hr-ent THEN NEXT.
+
+     
+  /* Calaucla la hora de salida */
+
+
+  ASSIGN bw_hora_sal = ((truncate((bw_hr-checa - bw_hr-ent + (Tipo-hor.tolerancia / 60)) / 30,0) + 1) * 1800) + Tipo-hor.hr-sal.
+
+  IF bw_hora_sal > 68400 THEN
+     bw_hora_sal = 68400.
+  
+  ASSIGN bw_mins     = bw_hr-checa - bw_hr-ent + (Tipo-hor.tolerancia / 60)
+         bw_fecha    = today.
+
+  FIND FIRST Emp-localizacion WHERE Emp-localizacion.num-empleado = Empleado.num-empleado NO-LOCK NO-ERROR.
+        
+    IF available Emp-Localizacion and Emp-localiza.mail <> "" THEN
+    DO:
+        ASSIGN bw_para  = Emp-localizacion.mail
+              /* bw_para  = "atrevinop@megaalimentos.com"  */
+		/*bw_para  = 'soporteexxsys@palmex.com'*/
+                bw_envio = TRUE.
+
+        IF Emp-localizacion.mail = "" THEN
+           NEXT.
+    END.
+  /*  ELSE DO:
+        /*-- BUSCA AL JEFE INMUEDIATO SUPERIOR  --*/
+        bw_emp = Empleado.num-empleado.
+        REPEAT WHILE sw-mail:
+            FIND FIRST Estructura-orga WHERE
+                Estructura-orga.num-empleado = bw_emp NO-LOCK NO-ERROR.
+            IF AVAILABLE Estructura-orga THEN DO:
+                FIND FIRST b-emploc WHERE
+                  b-emploc.num-empleado = Estructura-orga.depende-num-empleado
+                  NO-LOCK NO-ERROR.
+                IF AVAILABLE b-emploc THEN DO:
+                    IF b-emploc.mail = "" THEN
+                        ASSIGN bw_emp = Estructura-orga.depende-num-empleado.
+                    ELSE
+                        ASSIGN bw_para  = b-emploc.mail
+                               sw-mail  = FALSE
+                               bw_envio = TRUE.
+                END.
+                ELSE
+                    ASSIGN bw_para  = "soporteexxsys@palmex.com"
+                           sw-mail  = FALSE
+                           bw_envio = TRUE
+                           bw_nota  = "Empleado " + 
+                                  STRING(Estructura-orga.depende-num-empleado) +
+                                  " No tiene registro de Localizacion.".
+            END. /*--> FIN DO AVAILABLE Estructura-orga*/
+            ELSE
+                ASSIGN bw_para  = "soporteexxsys@palmex.com"
+                       sw-mail  = FALSE
+                       bw_envio = TRUE
+                       bw_nota  = "Empleado " + STRING(bw_emp) + 
+                                  " No esta en estructura org.".
+        END. /*--> FIN REPEAT*/
+    END.     /*--> FIN ELSE DO:*/  */
+    
+    IF bw_envio THEN 
+    DO:
+
+       ASSIGN bw_tema   = "Motivo de retardo.".
+
+       IF empleado.usuario <> "" THEN
+           ASSIGN bw_nombre = CAPS(Empleado.usuario) + " " +
+                              CAPS(Empleado.apellido-paterno) + " " +
+                              CAPS(Empleado.apellido-materno).
+       ELSE
+           ASSIGN bw_nombre = CAPS(Empleado.nombre) + " " +
+                              CAPS(Empleado.apellido-paterno) + " " +
+                              CAPS(Empleado.apellido-materno).
+
+        Put Stream Salida1 
+            Empleado.Num-Empleado Format ">>>>>>9" ' - '
+            bw_nombre             Format "x(30)" ' - '
+            bw_para               Format "x(30)" ' - ' 
+            Reloj-Mov.fecha       Format "99/99/9999" ' - '
+            bw_mins ' minutos tarde - Hora de entrada: ' STRING(Tipo-horario.hr-ent, "HH:MM") SKIP(1).
+
+         /*-- ENVIO DE MAIL  --*/ 
+
+
+        Assign Mailret        = 
+        '/x11/broker/irh/correos/' + string(Empleado.Num-Empleado) + ".txt"
+               bw_tot_min_tar = abs((bw_mins / 30)) + 1.
+               bw_suma        = bw_tot_min_tar * 30.
+
+    /* filtra a quienes no se les controla el horario */
+       IF ctr-asis = "n" THEN
+       NEXT.
+
+        OUTPUT TO Value(Mailret).
+        
+        Display bw_para 
+                bw_de 
+                bw_tema 
+                bw_fecha 
+                Fondo 
+                wk_logo with frame f_mail down.
+        DOWN WITH FRAME f_mail.
+        
+        PUT UNFORMATTED 
+         '<p><font face=Arial color=#631501 size=3>' bw_nombre 
+         ', el día de hoy tenemos registro de que llegaste tarde ' bw_mins FORMAT ">>>9" ' minutos, '
+         'por lo que te pedimos captures el motivo de tu retraso anotando tu compromiso de mejora y para'
+         ' cumplir con la política de horarios.</p>' SKIP            
+         '<input type=hidden name=wk_numemp_usuario value=' 
+         Empleado.num-empleado '>' SKIP
+         '<input type=hidden name=fecha-retardo value=' 
+         Reloj-mov.Fecha-mov '>' 
+         '<input type=hidden name=mail value=Si>'SKIP.
+         
+
+        /*PUT UNFORMATTED
+        '<table border=0 align=center><tr>'
+        '<th align=center bgcolor=#631501>'
+        '<font face=Courier size=2 color=white>Motivo de Retraso</font></th>'
+        '</tr><tr><td align=center>'
+        '<textarea name=motivo cols=45 rows=7></textarea></td>'
+        '</tr></table>'
+        '<p align=center><input type=submit name=boton value=Aceptar></p>'.*/
+
+        
+        PUT UNFORMATTED SKIP
+         '<p align=centeR><font face=Arial color=red size=3>'
+         'Favor de dar click en la siguiente liga para capturar tu motivo de retardo ' 
+         '<p align=center><a  href="http://172.25.158.83/cgi-bin/irhpalmex.sh/promotivoret.htm?fecha-retardo=' Reloj-mov.Fecha-mov '&kdjf87dosolk3~8d8sus=' encode(string(Empleado.num-empleado)) '"><b>..:: Click Aquí ::.. </b></a>'
+         '<input type=hidden name=mail value=Si>'SKIP.
+        
+        PUT UNFORMATTED 
+          '<p><br><br><br>'
+          '<font face=arial size=3 color=#631501>Atentamente<br>Recursos Humanos</font></p>'
+          '</form></body></html>'.
+    
+        OUTPUT CLOSE.
+       IF WEEKDAY(TODAY) > 1 AND
+          WEEKDAY(TODAY) < 7 THEN
+          OS-COMMAND Silent /usr/sbin/sendmail -t  < Value(Mailret). 
+    END.
+    
+    /*-- INICIALIZA VARIABLES --*/
+    ASSIGN bw_envio    = FALSE
+           sw-mail     = TRUE
+           bw_hr-checa = 0
+           bw_hr-ent   = 0
+           bw_nota     = "".
+END. /*FOR EACH*/
+
+OutPut stream salida1 Close.
+
+IF WEEKDAY(TODAY) > 1 AND
+   WEEKDAY(TODAY) < 7 THEN
+OS-COMMAND Silent /usr/sbin/sendmail -t  < Value(Mailsys). 
+ 
